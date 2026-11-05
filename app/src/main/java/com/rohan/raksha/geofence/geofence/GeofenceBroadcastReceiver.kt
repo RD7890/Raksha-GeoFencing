@@ -20,8 +20,8 @@ class GeofenceBroadcastReceiver : BroadcastReceiver() {
         when (event.geofenceTransition) {
             // Entered the outer ring -> start precise tracking
             Geofence.GEOFENCE_TRANSITION_ENTER -> ids.forEach { TrackingService.track(context, it) }
-            // Left the outer ring -> definitely out of the safe zone, stop tracking
-            Geofence.GEOFENCE_TRANSITION_EXIT -> ids.forEach { TrackingService.untrack(context, it) }
+            // Left the outer ring -> definitely out of the safe zone (backup trigger)
+            Geofence.GEOFENCE_TRANSITION_EXIT -> ids.forEach { TrackingService.outerExit(context, it) }
         }
     }
 }

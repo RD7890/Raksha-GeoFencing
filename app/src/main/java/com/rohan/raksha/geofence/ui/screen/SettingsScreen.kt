@@ -114,6 +114,10 @@ fun SettingsScreen(onBack: () -> Unit) {
             AlertSetupCard()
 
             Spacer(modifier = Modifier.height(24.dp))
+
+            LiveStatusCard()
+
+            Spacer(modifier = Modifier.height(24.dp))
             
             Card(
                 shape = RoundedCornerShape(24.dp),
@@ -123,7 +127,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Column(modifier = Modifier.padding(24.dp)) {
                     Text("About", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text("Raksha GeoFencing v1.1", color = MaterialTheme.colorScheme.onBackground)
+                    Text("Raksha GeoFencing v1.2", color = MaterialTheme.colorScheme.onBackground)
                     Text("Designed with premium aesthetics.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                 }
             }

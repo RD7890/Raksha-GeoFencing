@@ -21,6 +21,9 @@ object GeofenceConstants {
     const val ACTIVE_MIN_DISTANCE_M = 3f
     const val IDLE_INTERVAL_MS = 10_000L         // after alert has fired
     const val IDLE_MIN_DISTANCE_M = 10f
+    const val FAR_INTERVAL_MS = 30_000L          // far from every zone: save battery
+    const val FAR_MIN_DISTANCE_M = 20f
+    const val ARM_MAX_ACCURACY_METERS = 60f      // fix quality needed to mark "inside"
 
     const val NOTIFICATION_CHANNEL_SERVICE = "raksha_service"
     const val NOTIFICATION_CHANNEL_ALERT = "raksha_alert"

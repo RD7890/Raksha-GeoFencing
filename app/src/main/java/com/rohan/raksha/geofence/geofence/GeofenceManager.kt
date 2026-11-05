@@ -13,6 +13,7 @@ import com.google.android.gms.location.GeofencingClient
 import com.google.android.gms.location.GeofencingRequest
 import com.google.android.gms.location.LocationServices
 import com.rohan.raksha.geofence.data.SavedLocation
+import com.rohan.raksha.geofence.service.TrackingService
 
 /**
  * Registers one "outer ring" geofence per enabled safe zone. The ring is only a wake-up
@@ -40,6 +41,9 @@ class GeofenceManager(context: Context) {
         }
         val enabled = locations.filter { it.isEnabled }.take(GeofenceConstants.MAX_GEOFENCES)
         val pi = pendingIntent()
+
+        // Start precise tracking right away; do not wait for the (slow) geofence ENTER event
+        enabled.forEach { TrackingService.track(context, it.id) }
 
         client.removeGeofences(pi).addOnCompleteListener {
             if (enabled.isEmpty()) return@addOnCompleteListener

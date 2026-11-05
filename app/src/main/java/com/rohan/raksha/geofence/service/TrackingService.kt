@@ -33,19 +33,23 @@ import kotlinx.coroutines.sync.withLock
 import kotlin.math.min
 
 /**
- * Started by the outer-ring geofence (ENTER). Streams GPS fixes and compares them with the
- * exact safe-zone radius. When the user is confirmed to be outside, it raises the
- * full-screen alert. Stops itself when no safe zone is being tracked any more.
+ * Runs whenever at least one safe zone is enabled (started by the app, by boot, and as a
+ * backup by the outer-ring geofence). Streams GPS fixes, compares them with the exact
+ * radius and raises the full-screen alert when the user is confirmed to be outside.
+ * Battery: high accuracy only while the user is near a zone, balanced power when far away.
  */
 class TrackingService : Service() {
 
     private enum class ZoneState { UNKNOWN, INSIDE, OUTSIDE }
 
+    // ordinal order matters: the highest mode of all zones wins
+    private enum class Mode { FAR, ALERTED, ACTIVE }
+
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val mutex = Mutex()
     private val tracked = linkedSetOf<Int>()
     private val exitCounters = mutableMapOf<Int, Int>()
-    private var activeMode: Boolean? = null
+    private var currentMode: Mode? = null
 
     private lateinit var notifications: NotificationHelper
     private lateinit var prefs: SharedPreferences
@@ -76,14 +80,15 @@ class TrackingService : Service() {
             mutex.withLock {
                 if (tracked.isEmpty()) restoreTracked()
                 when (action) {
-                    ACTION_TRACK -> if (id != -1) {
-                        tracked.add(id)
-                        exitCounters.remove(id)
-                    }
-                    ACTION_UNTRACK -> if (id != -1) onLeftOuterRing(id)
+                    ACTION_TRACK -> if (id != -1) tracked.add(id)
+                    ACTION_OUTER_EXIT -> if (id != -1) onLeftOuterRing(id)
                 }
                 persistTracked()
-                if (tracked.isEmpty()) shutdown() else setMode(tracked.any { zoneState(it) != ZoneState.OUTSIDE })
+                if (tracked.isEmpty()) {
+                    shutdown()
+                } else if (currentMode == null) {
+                    setMode(Mode.ACTIVE) // high accuracy until the first fix tells us how far we are
+                }
             }
         }
         return START_STICKY
@@ -104,39 +109,54 @@ class TrackingService : Service() {
 
     // ---- location handling -------------------------------------------------------------
 
-    private suspend fun process(location: Location) {
+    private suspend fun process(fix: Location) {
         if (tracked.isEmpty()) return
         val dao = AppDatabase.getInstance(this).savedLocationDao()
+        var mode = Mode.FAR
+        val lines = mutableListOf<String>()
+        val accuracy = if (fix.hasAccuracy()) fix.accuracy else Float.MAX_VALUE
+
         for (id in tracked.toList()) {
             val saved = dao.getById(id)
             if (saved == null || !saved.isEnabled) {
                 drop(id)
                 continue
             }
-            evaluate(saved, location)
+            val distance = DistanceUtil.distanceBetween(
+                fix.latitude, fix.longitude, saved.latitude, saved.longitude
+            )
+            evaluate(saved, distance, accuracy)
+
+            val outerRing = GeofenceConstants.outerRingFor(saved.exitRadiusMeters)
+            val zoneMode = when {
+                distance > outerRing -> Mode.FAR
+                zoneState(id) == ZoneState.OUTSIDE -> Mode.ALERTED
+                else -> Mode.ACTIVE
+            }
+            if (zoneMode > mode) mode = zoneMode
+
+            lines.add(
+                "${saved.name}: ${zoneState(id).name}, ${distance.toInt()} m from centre, " +
+                    "radius ${saved.exitRadiusMeters.toInt()} m, GPS ±${accuracy.coerceAtMost(999f).toInt()} m"
+            )
         }
+        recordStatus(lines)
         persistTracked()
-        if (tracked.isEmpty()) {
-            shutdown()
-        } else {
-            setMode(tracked.any { zoneState(it) != ZoneState.OUTSIDE })
-        }
+
+        if (tracked.isEmpty()) shutdown() else setMode(mode)
     }
 
-    private fun evaluate(saved: SavedLocation, fix: Location) {
-        val accuracy = if (fix.hasAccuracy()) fix.accuracy else Float.MAX_VALUE
-        if (accuracy > GeofenceConstants.MAX_ACCURACY_METERS) return // too noisy to trust
-
-        val distance = DistanceUtil.distanceBetween(
-            fix.latitude, fix.longitude, saved.latitude, saved.longitude
-        )
+    private fun evaluate(saved: SavedLocation, distance: Float, accuracy: Float) {
+        val id = saved.id
         val radius = saved.exitRadiusMeters
         val margin = min(accuracy, GeofenceConstants.ACCURACY_MARGIN_CAP_METERS)
-        val id = saved.id
 
         when (zoneState(id)) {
             ZoneState.INSIDE -> {
-                if (distance > radius + margin) {
+                val trusted = accuracy <= GeofenceConstants.MAX_ACCURACY_METERS
+                // outside with a good fix, or clearly outside even with a bad fix
+                val outside = (trusted && distance > radius + margin) || (distance - accuracy > radius)
+                if (outside) {
                     val count = (exitCounters[id] ?: 0) + 1
                     if (count >= GeofenceConstants.CONFIRM_EXIT_FIXES) {
                         exitCounters.remove(id)
@@ -151,8 +171,8 @@ class TrackingService : Service() {
                 }
             }
             ZoneState.OUTSIDE, ZoneState.UNKNOWN -> {
-                // One good fix inside the circle is enough to (re)arm the zone
-                if (distance <= radius) {
+                // one reasonable fix inside the circle (re)arms the zone
+                if (distance <= radius && accuracy <= GeofenceConstants.ARM_MAX_ACCURACY_METERS) {
                     val wasOutside = zoneState(id) == ZoneState.OUTSIDE
                     exitCounters.remove(id)
                     setZoneState(id, ZoneState.INSIDE)
@@ -162,15 +182,16 @@ class TrackingService : Service() {
         }
     }
 
-    /** The phone left the outer ring. If we never confirmed the exit, alert now. */
+    /** Backup: Play Services says we left the outer ring. If we never confirmed the exit, alert now. */
     private suspend fun onLeftOuterRing(id: Int) {
         if (zoneState(id) == ZoneState.INSIDE) {
             val saved = AppDatabase.getInstance(this).savedLocationDao().getById(id)
-            if (saved != null && saved.isEnabled) notifications.showExitAlert(saved)
+            if (saved != null && saved.isEnabled) {
+                setZoneState(id, ZoneState.OUTSIDE)
+                exitCounters.remove(id)
+                notifications.showExitAlert(saved)
+            }
         }
-        tracked.remove(id)
-        exitCounters.remove(id)
-        setZoneState(id, ZoneState.UNKNOWN)
     }
 
     private fun drop(id: Int) {
@@ -183,21 +204,26 @@ class TrackingService : Service() {
     // ---- location updates --------------------------------------------------------------
 
     @SuppressLint("MissingPermission")
-    private fun setMode(active: Boolean) {
-        if (activeMode == active) return
-        activeMode = active
+    private fun setMode(mode: Mode) {
+        if (currentMode == mode) return
+        currentMode = mode
 
-        val request = if (active) {
-            LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, GeofenceConstants.ACTIVE_INTERVAL_MS)
-                .setMinUpdateIntervalMillis(1_000L)
-                .setMinUpdateDistanceMeters(GeofenceConstants.ACTIVE_MIN_DISTANCE_M)
-                .build()
-        } else {
-            // alert already sent: relax a little, still watch for the user coming back
-            LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, GeofenceConstants.IDLE_INTERVAL_MS)
-                .setMinUpdateDistanceMeters(GeofenceConstants.IDLE_MIN_DISTANCE_M)
-                .build()
+        val request = when (mode) {
+            Mode.ACTIVE ->
+                LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, GeofenceConstants.ACTIVE_INTERVAL_MS)
+                    .setMinUpdateIntervalMillis(1_000L)
+                    .setMinUpdateDistanceMeters(GeofenceConstants.ACTIVE_MIN_DISTANCE_M)
+                    .build()
+            Mode.ALERTED ->
+                LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, GeofenceConstants.IDLE_INTERVAL_MS)
+                    .setMinUpdateDistanceMeters(GeofenceConstants.IDLE_MIN_DISTANCE_M)
+                    .build()
+            Mode.FAR ->
+                LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, GeofenceConstants.FAR_INTERVAL_MS)
+                    .setMinUpdateDistanceMeters(GeofenceConstants.FAR_MIN_DISTANCE_M)
+                    .build()
         }
+        Log.d(TAG, "Location mode -> $mode")
         try {
             fused.removeLocationUpdates(callback)
             fused.requestLocationUpdates(request, callback, Looper.getMainLooper())
@@ -208,12 +234,20 @@ class TrackingService : Service() {
 
     private fun shutdown() {
         fused.removeLocationUpdates(callback)
-        activeMode = null
+        currentMode = null
+        prefs.edit().remove("status_summary").remove("status_time").apply()
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
     }
 
     // ---- state ---------------------------------------------------------------------------
+
+    private fun recordStatus(lines: List<String>) {
+        prefs.edit()
+            .putString("status_summary", lines.joinToString("\n"))
+            .putLong("status_time", System.currentTimeMillis())
+            .apply()
+    }
 
     private fun zoneState(id: Int): ZoneState =
         try {
@@ -247,12 +281,15 @@ class TrackingService : Service() {
     companion object {
         private const val TAG = "TrackingService"
         private const val ACTION_TRACK = "com.rohan.raksha.geofence.ACTION_TRACK"
-        private const val ACTION_UNTRACK = "com.rohan.raksha.geofence.ACTION_UNTRACK"
+        private const val ACTION_OUTER_EXIT = "com.rohan.raksha.geofence.ACTION_OUTER_EXIT"
         private const val EXTRA_LOCATION_ID = "location_id"
         private const val KEY_TRACKED = "tracked_ids"
 
+        /** Make sure the service is running and watching this zone. */
         fun track(context: Context, locationId: Int) = send(context, ACTION_TRACK, locationId)
-        fun untrack(context: Context, locationId: Int) = send(context, ACTION_UNTRACK, locationId)
+
+        /** Outer geofence ring was left (backup trigger). */
+        fun outerExit(context: Context, locationId: Int) = send(context, ACTION_OUTER_EXIT, locationId)
 
         private fun send(context: Context, action: String, locationId: Int) {
             val intent = Intent(context, TrackingService::class.java)
