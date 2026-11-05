@@ -143,8 +143,15 @@ fun AddLocationScreen(viewModel: AddLocationViewModel, onBack: () -> Unit) {
                                 mapLibreMap = map
                                 map.setStyle(Style.Builder().fromUri(MapConfig.STYLE_URL)) { style ->
                                     val locationComponent = map.locationComponent
+                                    val request = org.maplibre.android.location.engine.LocationEngineRequest.Builder(1000L)
+                                        .setPriority(org.maplibre.android.location.engine.LocationEngineRequest.PRIORITY_HIGH_ACCURACY)
+                                        .setMaxWaitTime(1000L)
+                                        .build()
                                     locationComponent.activateLocationComponent(
-                                        LocationComponentActivationOptions.builder(ctx, style).build()
+                                        LocationComponentActivationOptions.builder(ctx, style)
+                                            .useDefaultLocationEngine(true)
+                                            .locationEngineRequest(request)
+                                            .build()
                                     )
                                     if (ActivityCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED) {
                                         locationComponent.isLocationComponentEnabled = true

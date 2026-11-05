@@ -51,6 +51,7 @@ fun MainScreen(viewModel: MainViewModel, onNavigateAdd: () -> Unit, onNavigateSe
     val locationsState = rememberUpdatedState(locations)
     val mapView = rememberMapView()
     var showBottomSheet by remember { mutableStateOf(true) }
+    var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
     
     Box(modifier = Modifier.fillMaxSize()) {
         // Full Screen Map
@@ -58,6 +59,7 @@ fun MainScreen(viewModel: MainViewModel, onNavigateAdd: () -> Unit, onNavigateSe
             factory = { ctx ->
                 mapView.apply {
                     getMapAsync { map ->
+                        mapRef = map
                         map.setStyle(Style.Builder().fromUri(MapConfig.STYLE_URL)) { style ->
                             val locationComponent = map.locationComponent
                             val request = org.maplibre.android.location.engine.LocationEngineRequest.Builder(1000L)
@@ -142,6 +144,23 @@ fun MainScreen(viewModel: MainViewModel, onNavigateAdd: () -> Unit, onNavigateSe
                     .padding(end = 16.dp, bottom = 16.dp),
                 horizontalArrangement = Arrangement.End
             ) {
+                // Any touch on the map detaches the camera from the blue dot; this re-attaches it
+                FloatingActionButton(
+                    onClick = {
+                        val component = mapRef?.locationComponent
+                        if (component != null && component.isLocationComponentActivated) {
+                            component.cameraMode = CameraMode.TRACKING
+                            component.zoomWhileTracking(16.0)
+                        }
+                    },
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.padding(end = 16.dp)
+                ) {
+                    Icon(Icons.Default.LocationOn, contentDescription = "Follow my location")
+                }
+
                 FloatingActionButton(
                     onClick = { showBottomSheet = !showBottomSheet },
                     containerColor = MaterialTheme.colorScheme.secondaryContainer,

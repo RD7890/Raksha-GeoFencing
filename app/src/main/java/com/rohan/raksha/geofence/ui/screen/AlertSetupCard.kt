@@ -82,9 +82,16 @@ fun AlertSetupCard() {
                     val app = context.applicationContext
                     Toast.makeText(app, "Lock your phone now. Alert in 10 seconds.", Toast.LENGTH_LONG).show()
                     Handler(Looper.getMainLooper()).postDelayed({
-                        NotificationHelper(app).showExitAlert(
+                        val shown = NotificationHelper(app).showExitAlert(
                             SavedLocation(id = 0, name = "Test zone", latitude = 0.0, longitude = 0.0)
                         )
+                        if (!shown) {
+                            Toast.makeText(
+                                app,
+                                NotificationHelper(app).alertBlockedReason() ?: "Alert could not be shown",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
                     }, 10_000L)
                 },
                 shape = RoundedCornerShape(12.dp),

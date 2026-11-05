@@ -15,6 +15,14 @@ Safe-zone app: set your home on a satellite map, pick a radius (30–500 m, defa
 4. Leaving the outer ring without a confirmed exit also raises the alert; coming back re-arms the zone.
 5. Boot / app update re-registers the geofences.
 
+## v1.3 changes (live location + alerts)
+- Tracking now has **no distance filter** near a zone, so fixes (and the Live status card) update every ~3 s even when standing still.
+- **Watchdog**: if no fix arrives for 30 s the location request is re-registered, and after 3 stalls the app switches between Google fused location and the plain Android GPS/network provider. Phones without Google Play Services use the Android provider from the start.
+- **Alert channel renamed** (`raksha_alert_v2`). Android never updates a notification channel after it has been created, so an install upgraded from an older build could keep a silent / low-importance alert channel.
+- Alerts check that notifications and the alert channel are enabled; the reason is shown on the Live status card.
+- Zones **arm** when the GPS error circle touches the safe zone (before: the reported position itself had to be inside), which matters for small zones and indoor GPS drift.
+- Live status card shows service heartbeat, location source, last error and last alert result. Main map has a "follow my location" button.
+
 ## Map
 MapLibre + MapTiler hybrid (satellite + labels). Key lookup order: `local.properties`
 (`maptiler.key=...`) → env `MAPTILER_KEY` → default in `app/build.gradle.kts`.
