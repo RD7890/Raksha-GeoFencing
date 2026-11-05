@@ -20,7 +20,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.rohan.raksha.geofence.R
+import com.rohan.raksha.geofence.ui.components.IconBadge
+import com.rohan.raksha.geofence.ui.components.PrimaryButton
+import com.rohan.raksha.geofence.ui.theme.Raksha
 
 @Composable
 fun PermissionsWrapper(
@@ -154,47 +161,33 @@ fun PermissionScreen(
     secondaryText: String? = null,
     onSecondary: (() -> Unit)? = null
 ) {
-    Box(
+    val c = Raksha.colors
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        contentAlignment = Alignment.Center
+            .background(c.bg)
+            .systemBarsPadding()
+            .padding(horizontal = 28.dp, vertical = 24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Card(
-            modifier = Modifier.padding(32.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            shape = RoundedCornerShape(24.dp),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(bottom = 24.dp)
-                )
-                Button(
-                    onClick = onClick,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Text(text = buttonText, color = MaterialTheme.colorScheme.onPrimary)
-                }
-                if (secondaryText != null && onSecondary != null) {
-                    TextButton(onClick = onSecondary) {
-                        Text(text = secondaryText)
-                    }
-                }
+        IconBadge(
+            R.drawable.ph_shield_check_fill, tint = c.rose, background = c.roseSoft,
+            size = 88.dp, iconSize = 44.dp, shape = CircleShape
+        )
+        Spacer(Modifier.height(24.dp))
+        Text(title, color = c.text, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(10.dp))
+        Text(
+            description, color = c.textMuted, fontSize = 15.sp, lineHeight = 22.sp,
+            textAlign = TextAlign.Center
+        )
+        Spacer(Modifier.height(28.dp))
+        PrimaryButton(text = buttonText, onClick = onClick)
+        if (secondaryText != null && onSecondary != null) {
+            Spacer(Modifier.height(8.dp))
+            TextButton(onClick = onSecondary) {
+                Text(secondaryText, color = c.textMuted, fontWeight = FontWeight.Bold)
             }
         }
     }

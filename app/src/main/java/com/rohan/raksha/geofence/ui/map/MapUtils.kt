@@ -1,10 +1,29 @@
 package com.rohan.raksha.geofence.ui.map
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.pm.PackageManager
+import android.view.Gravity
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.app.ActivityCompat
+import com.rohan.raksha.geofence.ui.components.FloatingBarSpace
+import org.maplibre.android.location.LocationComponentActivationOptions
+import org.maplibre.android.location.engine.LocationEngineRequest
+import org.maplibre.android.location.modes.CameraMode
+import org.maplibre.android.location.modes.RenderMode
+import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.style.layers.CircleLayer
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.rohan.raksha.geofence.BuildConfig
@@ -62,20 +81,85 @@ fun rememberMapView(): MapView {
     return mapView
 }
 
-/** Draws the red safe-zone circles on top of the map style. */
+/**
+ * Full-screen map: MapTiler hybrid style, live location puck, MapTiler logo + attribution tucked under the
+ * floating top bar (they must stay visible per MapTiler's terms). [onReady] runs once the style is loaded.
+ */
+@SuppressLint("MissingPermission")
+@Composable
+fun RakshaMap(
+    modifier: Modifier = Modifier,
+    followUser: Boolean = true,
+    followZoom: Double = 16.0,
+    onReady: (MapLibreMap, Style) -> Unit = { _, _ -> }
+) {
+    val mapView = rememberMapView()
+    val density = LocalDensity.current
+    val topMarginPx = with(density) { WindowInsets.statusBars.getTop(this) + FloatingBarSpace.roundToPx() }
+    val sideMarginPx = with(density) { 16.dp.roundToPx() }
+
+    AndroidView(
+        modifier = modifier,
+        factory = { ctx ->
+            mapView.apply {
+                getMapAsync { map ->
+                    map.uiSettings.isCompassEnabled = false
+                    map.uiSettings.isRotateGesturesEnabled = true
+                    map.uiSettings.isTiltGesturesEnabled = false
+                    map.uiSettings.logoGravity = Gravity.TOP or Gravity.START
+                    map.uiSettings.setLogoMargins(sideMarginPx, topMarginPx, 0, 0)
+                    map.uiSettings.attributionGravity = Gravity.TOP or Gravity.END
+                    map.uiSettings.setAttributionMargins(0, topMarginPx, sideMarginPx, 0)
+                    map.setStyle(Style.Builder().fromUri(MapConfig.STYLE_URL)) { style ->
+                        activateLocation(ctx, map, style, followUser, followZoom)
+                        SafeZoneLayer.ensure(style)
+                        onReady(map, style)
+                    }
+                }
+            }
+        }
+    )
+}
+
+@SuppressLint("MissingPermission")
+private fun activateLocation(ctx: Context, map: MapLibreMap, style: Style, follow: Boolean, zoom: Double) {
+    if (ActivityCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION)
+        != PackageManager.PERMISSION_GRANTED
+    ) return
+    val request = LocationEngineRequest.Builder(1000L)
+        .setPriority(LocationEngineRequest.PRIORITY_HIGH_ACCURACY)
+        .setMaxWaitTime(1000L)
+        .build()
+    val component = map.locationComponent
+    component.activateLocationComponent(
+        LocationComponentActivationOptions.builder(ctx, style)
+            .useDefaultLocationEngine(true)
+            .locationEngineRequest(request)
+            .build()
+    )
+    component.isLocationComponentEnabled = true
+    component.renderMode = RenderMode.COMPASS
+    component.cameraMode = if (follow) CameraMode.TRACKING else CameraMode.NONE
+    if (follow) component.zoomWhileTracking(zoom)
+}
+
+/** Draws the red (#FF2541) safe-zone circles, plus a centre dot, on top of the map style. */
 object SafeZoneLayer {
     private const val SOURCE = "safe-zone-source"
     private const val FILL = "safe-zone-fill"
     private const val LINE = "safe-zone-line"
+    private const val CENTER_SOURCE = "safe-zone-center-source"
+    private const val CENTER = "safe-zone-center"
     private const val RED = "#FF2541"
 
-    private fun ensure(style: Style) {
+    fun ensure(style: Style) {
         if (style.getSource(SOURCE) != null) return
         style.addSource(GeoJsonSource(SOURCE, FeatureCollection.fromFeatures(emptyList<Feature>())))
+        style.addSource(GeoJsonSource(CENTER_SOURCE, FeatureCollection.fromFeatures(emptyList<Feature>())))
         style.addLayer(
             FillLayer(FILL, SOURCE).withProperties(
                 PropertyFactory.fillColor(RED),
-                PropertyFactory.fillOpacity(0.22f)
+                PropertyFactory.fillOpacity(0.20f)
             )
         )
         style.addLayer(
@@ -84,15 +168,27 @@ object SafeZoneLayer {
                 PropertyFactory.lineWidth(2.5f)
             )
         )
+        style.addLayer(
+            CircleLayer(CENTER, CENTER_SOURCE).withProperties(
+                PropertyFactory.circleRadius(6f),
+                PropertyFactory.circleColor(RED),
+                PropertyFactory.circleStrokeColor("#FFFFFF"),
+                PropertyFactory.circleStrokeWidth(2.5f)
+            )
+        )
     }
 
     /** [circles] = list of (center, radius in metres). */
-    fun update(style: Style, circles: List<Pair<LatLng, Double>>) {
+    fun update(style: Style, circles: List<Pair<LatLng, Double>>, showCenters: Boolean = true) {
         ensure(style)
         val features = circles.map { (center, radius) ->
             Feature.fromGeometry(Polygon.fromLngLats(listOf(circlePoints(center, radius))))
         }
         style.getSourceAs<GeoJsonSource>(SOURCE)?.setGeoJson(FeatureCollection.fromFeatures(features))
+        val centers = if (showCenters) {
+            circles.map { (center, _) -> Feature.fromGeometry(Point.fromLngLat(center.longitude, center.latitude)) }
+        } else emptyList()
+        style.getSourceAs<GeoJsonSource>(CENTER_SOURCE)?.setGeoJson(FeatureCollection.fromFeatures(centers))
     }
 
     private fun circlePoints(center: LatLng, radiusMeters: Double, steps: Int = 72): List<Point> {

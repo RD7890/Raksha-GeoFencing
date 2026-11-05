@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Phosphor Icons (MIT) - https://phosphoricons.com -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="256" android:viewportHeight="256">
+    <path android:fillColor="#FF000000"
+        android:pathData="M 168 112 a 56 56 0 1 1 -56 -56 A 56 56 0 0 1 168 112 Z m 61.66 117.66 a 8 8 0 0 1 -11.32 0 l -50.06 -50.07 a 88 88 0 1 1 11.32 -11.31 l 50.06 50.06 A 8 8 0 0 1 229.66 229.66 Z M 112 184 a 72 72 0 1 0 -72 -72 A 72.08 72.08 0 0 0 112 184 Z" />
+</vector>

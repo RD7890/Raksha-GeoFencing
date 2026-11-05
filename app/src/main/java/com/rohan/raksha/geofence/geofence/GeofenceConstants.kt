@@ -8,6 +8,10 @@ object GeofenceConstants {
     const val MAX_RADIUS_METERS = 500f
     const val DEFAULT_RADIUS_METERS = 50f
 
+    // One-tap "Set Home to my location"
+    const val HOME_NAME = "Home"
+    const val HOME_RADIUS_METERS = 30f
+
     // Outer ring registered with Play Services: only used to wake the app up
     const val OUTER_RING_EXTRA_METERS = 150f
     const val OUTER_RING_MIN_METERS = 200f

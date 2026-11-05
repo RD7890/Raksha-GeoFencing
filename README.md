@@ -15,6 +15,14 @@ Safe-zone app: set your home on a satellite map, pick a radius (30–500 m, defa
 4. Leaving the outer ring without a confirmed exit also raises the alert; coming back re-arms the zone.
 5. Boot / app update re-registers the geofences.
 
+## v1.4 changes (redesign)
+- New "Pearl" look ported from Raksha Redesigned: white + soft grey cards, **#FF2541** primary, Phosphor icons, Raksha font.
+- Full-screen map on every map screen with a **floating top bar** and a **floating pill bottom nav** (Map / Zones / Settings).
+- **Set Home to my location**: one tap on the map card takes a fresh GPS fix and creates (or moves) the "Home" zone with a **30 m** radius. No dragging.
+- Full-screen **Set safe zone** screen: floating search pill, pin in the middle of the free map area, name chips (Home / Work / School / Custom), radius slider with 30/50/100/200 m shortcuts, "My location" button.
+- Zones tab with live Inside / Outside pills, pause switch and delete confirmation; tapping a zone flies the map to it.
+- Settings tab and permission screens restyled. Added INTERNET permission explicitly (map tiles and place search).
+
 ## v1.3 changes (live location + alerts)
 - Tracking now has **no distance filter** near a zone, so fixes (and the Live status card) update every ~3 s even when standing still.
 - **Watchdog**: if no fix arrives for 30 s the location request is re-registered, and after 3 stalls the app switches between Google fused location and the plain Android GPS/network provider. Phones without Google Play Services use the Android provider from the start.

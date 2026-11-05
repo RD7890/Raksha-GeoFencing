@@ -1,136 +1,103 @@
 package com.rohan.raksha.geofence.ui.screen
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.*
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.rohan.raksha.geofence.ui.theme.DarkSpaceNavy
+import androidx.compose.ui.unit.sp
+import com.rohan.raksha.geofence.R
+import com.rohan.raksha.geofence.ui.components.FloatingBarSpace
+import com.rohan.raksha.geofence.ui.components.FloatingTopBar
+import com.rohan.raksha.geofence.ui.components.GlassCard
+import com.rohan.raksha.geofence.ui.components.IconBadge
+import com.rohan.raksha.geofence.ui.components.SectionTitle
+import com.rohan.raksha.geofence.ui.components.SmallButton
+import com.rohan.raksha.geofence.ui.theme.Raksha
 import com.rohan.raksha.geofence.util.MiuiHelper
 
-@OptIn(ExperimentalMaterial3Api::class)
+/** Settings tab: alert setup, live status, background hints. */
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen() {
+    val c = Raksha.colors
     val context = LocalContext.current
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Settings", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent
-                ),
-                modifier = Modifier.background(
-                    Brush.verticalGradient(
-                        colors = listOf(DarkSpaceNavy.copy(alpha = 0.9f), Color.Transparent)
-                    )
-                )
-            )
-        },
-        containerColor = MaterialTheme.colorScheme.background
-    ) { padding ->
+    val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + FloatingBarSpace + 4.dp
+    val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + FloatingBarSpace + 16.dp
+
+    Box(Modifier.fillMaxSize().background(c.bg)) {
         Column(
-            modifier = Modifier
-                .padding(padding)
+            Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 16.dp)
+                .padding(start = 20.dp, end = 20.dp, top = top, bottom = bottom),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            if (MiuiHelper.isMiui()) {
-                Card(
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.error.copy(alpha = 0.1f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(24.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Warning, contentDescription = "Warning", tint = MaterialTheme.colorScheme.error)
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                "MIUI / HyperOS Detected", 
-                                style = MaterialTheme.typography.titleMedium, 
-                                color = MaterialTheme.colorScheme.error, 
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            "Please enable Autostart and No Restrictions in Battery Saver for reliable background geofencing.",
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-                        Spacer(modifier = Modifier.height(24.dp))
-                        Button(
-                            onClick = {
-                                try {
-                                    context.startActivity(MiuiHelper.getAutostartIntent())
-                                } catch (e: Exception) { }
-                            },
-                            shape = RoundedCornerShape(12.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                        ) {
-                            Text("Open Autostart Settings")
-                        }
-                    }
-                }
-            } else {
-                Card(
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(24.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.Info, contentDescription = "Info", tint = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Text(
-                            "No specific OEM settings required for this device.",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-
+            SectionTitle("ALERTS")
             AlertSetupCard()
 
-            Spacer(modifier = Modifier.height(24.dp))
-
+            SectionTitle("LIVE STATUS", Modifier.padding(top = 8.dp))
             LiveStatusCard()
 
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Card(
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(24.dp)) {
-                    Text("About", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text("Raksha GeoFencing v1.3", color = MaterialTheme.colorScheme.onBackground)
-                    Text("Designed with premium aesthetics.", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            SectionTitle("BACKGROUND", Modifier.padding(top = 8.dp))
+            GlassCard {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconBadge(
+                        R.drawable.ph_battery_warning_fill,
+                        tint = if (MiuiHelper.isMiui()) c.amber else c.mint,
+                        background = if (MiuiHelper.isMiui()) c.amberSoft else c.mintSoft
+                    )
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            if (MiuiHelper.isMiui()) "Xiaomi / HyperOS detected" else "No special setup needed",
+                            color = c.text, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold
+                        )
+                        Text(
+                            if (MiuiHelper.isMiui())
+                                "Turn on Autostart and set Battery to \"No restrictions\" so protection keeps running."
+                            else "Your phone doesn't need any extra background settings.",
+                            color = c.textMuted, fontSize = 12.5.sp, lineHeight = 17.sp
+                        )
+                    }
+                }
+                if (MiuiHelper.isMiui()) {
+                    Spacer(Modifier.height(12.dp))
+                    SmallButton("Open Autostart settings", onClick = {
+                        try { context.startActivity(MiuiHelper.getAutostartIntent()) } catch (e: Exception) { }
+                    })
                 }
             }
+
+            SectionTitle("ABOUT", Modifier.padding(top = 8.dp))
+            GlassCard {
+                Text("Raksha GeoFencing v1.4", color = c.text, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+                Text("Leave your safe zone and Raksha raises the alarm.", color = c.textMuted, fontSize = 12.5.sp)
+            }
         }
+
+        FloatingTopBar(
+            title = "Settings",
+            subtitle = "Alerts and background",
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
     }
 }
