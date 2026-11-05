@@ -1,0 +1,3 @@
+-keep class com.rohan.raksha.geofence.data.** { *; }
+-keep class androidx.room.** { *; }
+-keep class org.maplibre.android.** { *; }

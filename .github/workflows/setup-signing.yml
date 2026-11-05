@@ -1,0 +1,60 @@
+name: Setup Signing Keystore
+
+# Run this ONCE manually to generate and commit a stable release keystore.
+# After the commit, every build workflow finds signing/signing-key.jks and
+# uses it directly — this workflow never needs to run again.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  setup:
+    name: Generate and commit stable signing keystore
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check if keystore already exists
+        id: check
+        run: |
+          if [ -f signing/signing-key.jks ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "✅ Keystore already committed — nothing to do."
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "🔑 No keystore found — will generate now."
+          fi
+
+      - name: Generate stable keystore
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          mkdir -p signing
+          keytool -genkeypair -v \
+            -keystore signing/signing-key.jks \
+            -storetype PKCS12 \
+            -storepass raksha123 \
+            -keypass raksha123 \
+            -alias raksha \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 36500 \
+            -dname "CN=Raksha, OU=Mobile, O=Raksha, L=India, ST=Odisha, C=IN"
+          echo "Generated keystore: $(wc -c < signing/signing-key.jks) bytes"
+
+      - name: Commit keystore to repo
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
+          git add signing/signing-key.jks
+          git commit -m "ci: add stable release signing keystore [skip ci]"
+          git push origin HEAD:main
+          echo "✅ Keystore committed. All future builds will use this stable key."

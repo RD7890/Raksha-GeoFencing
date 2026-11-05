@@ -1,0 +1,166 @@
+name: Build Raksha APK
+
+on:
+  push:
+    branches: [ "main", "release/**" ]
+    paths-ignore: [ '**.md', '.github/**' ]
+  workflow_dispatch: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    name: Build Raksha APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Checkout ────────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── 2. JDK 17 ─────────────────────────────────────────────────────────────
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      # ── 3. Gradle cache ───────────────────────────────────────────────────────
+      - name: Restore Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/libs.versions.toml') }}
+          restore-keys: ${{ runner.os }}-gradle-
+
+      # ── 4. Signing keystore ───────────────────────────────────────────────────
+      - name: Restore or generate signing keystore
+        run: |
+          mkdir -p signing
+          if [ -f signing/signing-key.jks ]; then
+            echo "Using committed keystore: $(wc -c < signing/signing-key.jks) bytes"
+          elif [ -n "${{ secrets.SIGNING_KEYSTORE_B64 }}" ]; then
+            echo "${{ secrets.SIGNING_KEYSTORE_B64 }}" | base64 -d > signing/signing-key.jks
+            echo "Keystore from secret: $(wc -c < signing/signing-key.jks) bytes"
+          else
+            echo "::error::No permanent signing keystore found (missing signing/signing-key.jks and SIGNING_KEYSTORE_B64 secret). Refusing to generate a throwaway key — that would silently break updates for everyone on a previous install. Restore signing/signing-key.jks or set the SIGNING_KEYSTORE_B64 secret, then rerun."
+            exit 1
+          fi
+
+      # ── 5. local.properties ───────────────────────────────────────────────────
+      - name: Create local.properties
+        run: |
+          printf 'signing.storeFile=signing/signing-key.jks\nsigning.storePassword=raksha123\nsigning.keyAlias=raksha\nsigning.keyPassword=raksha123\n' \
+            > local.properties
+
+      # ── 6. chmod gradlew ──────────────────────────────────────────────────────
+      - name: chmod gradlew
+        run: chmod +x ./gradlew
+
+      # ── 7. Auto version bump ──────────────────────────────────────────────────
+      - name: Bump version
+        run: |
+          BUILD=${{ github.run_number }}
+          VER_NAME="1.0.${BUILD}"
+          sed -i "s/versionCode = [0-9]*/versionCode = ${BUILD}/" app/build.gradle.kts
+          sed -i "s/versionName = \"[^\"]*\"/versionName = \"${VER_NAME}\"/" app/build.gradle.kts
+          echo "versionCode → ${BUILD}"
+          echo "versionName → ${VER_NAME}"
+
+      # ── 8. Build Release APK ──────────────────────────────────────────────────
+      - name: Assemble Release APK
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace 2>&1 | tee build.log
+
+      # ── 9. Version info ───────────────────────────────────────────────────────
+      - name: Get version info
+        id: version
+        run: |
+          VER=$(grep 'versionName' app/build.gradle.kts | grep -oP '"[^"]+"' | tr -d '"' | head -1)
+          echo "name=$VER"                      >> $GITHUB_OUTPUT
+          echo "apk_name=Raksha-v${VER}.apk"   >> $GITHUB_OUTPUT
+          echo "Version: $VER"
+
+      # ── 10. Rename APKs ───────────────────────────────────────────────────────
+      - name: Rename APKs
+        run: |
+          VER="${{ steps.version.outputs.name }}"
+          OUTDIR="app/build/outputs/apk/release"
+          echo "--- APKs produced by Gradle ---"
+          find "$OUTDIR" -name "*.apk" | sort
+          COUNT=0
+          while IFS= read -r SRC; do
+            BASENAME=$(basename "$SRC" .apk)
+            # Strip leading "app-" prefix and "-release" suffix
+            LABEL="${BASENAME#app-}"
+            LABEL="${LABEL%-release}"
+            if [ "$LABEL" = "release" ] || [ -z "$LABEL" ]; then
+              LABEL="universal"
+            fi
+            DEST="$OUTDIR/Raksha-v${VER}-${LABEL}.apk"
+            cp "$SRC" "$DEST"
+            echo "Renamed: $SRC → $DEST"
+            COUNT=$((COUNT+1))
+          done < <(find "$OUTDIR" -name "app-*-release.apk" -o -name "app-release.apk" | sort)
+          echo "--- Final APKs ($COUNT renamed) ---"
+          find "$OUTDIR" -name "Raksha-*.apk" | sort
+
+      # ── 11. Upload artifacts ──────────────────────────────────────────────────
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Raksha-v${{ steps.version.outputs.name }}-all-apks
+          path: app/build/outputs/apk/release/Raksha-*.apk
+          retention-days: 90
+
+      # ── 12. GitHub Release ────────────────────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version.outputs.name }}-build.${{ github.run_number }}
+          name: "Raksha v${{ steps.version.outputs.name }} (Build #${{ github.run_number }})"
+          body: |
+            ## Raksha v${{ steps.version.outputs.name }} — Automated Release
+
+            **Branch:** `${{ github.ref_name }}` | **Commit:** `${{ github.sha }}`
+            **Package:** `com.rohan.raksha`
+
+            ### APK Downloads — Pick the right one for your device
+
+            | File | Device |
+            |------|--------|
+            | `Raksha-v${{ steps.version.outputs.name }}-armv7-watch-32bit.apk` | Android watches, 32-bit ARM phones |
+            | `Raksha-v${{ steps.version.outputs.name }}-arm64-phone-64bit.apk` | Modern Android phones (64-bit ARM) |
+            | `Raksha-v${{ steps.version.outputs.name }}-x86_64-emulator.apk` | x86 devices, emulators |
+            | `Raksha-v${{ steps.version.outputs.name }}-universal-all-devices.apk` | All devices (larger file) |
+
+            ### Changes in this build
+            - **Always sends SOS** — even when GPS fix is unavailable, message is sent without coordinates
+            - **Guaranteed restart** — listening always resumes after any SOS flow (fix/fail/cancel)
+            - **Watch compatible** — native `LocationManager` fallback when Google Play Services absent
+            - **Keyword sensitivity** — lowered RMS and frame thresholds for short/normal-volume keywords
+
+            ### Install
+            1. Download the APK for your device (see table above)
+            2. Enable **Install from unknown sources** in Settings
+            3. Install and grant Mic, SMS, Location permissions
+            4. Add trusted contacts → Set keyword → Activate
+
+          draft: false
+          prerelease: false
+          files: app/build/outputs/apk/release/Raksha-*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
